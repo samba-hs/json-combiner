@@ -1,0 +1,7 @@
+[
+  { "Channel": "Google Ads - Brand Search", "Lead": 150, "Deals Created": 12, "Closed Won": 5, "Revenue": 50000 },
+  { "Channel": "LinkedIn Sponsored Content", "Lead": 80, "Deals Created": 6, "Closed Won": 2, "Revenue": 22000 },
+  { "Channel": "Facebook Ads Retargeting", "Lead": 200, "Deals Created": 15, "Closed Won": 7, "Revenue": 70000 },
+  { "Channel": "Organic Search SEO", "Lead": 300, "Deals Created": 20, "Closed Won": 10, "Revenue": 95000 },
+  { "Channel": "Email Marketing Campaign", "Lead": 120, "Deals Created": 8, "Closed Won": 3, "Revenue": 28000 }
+]

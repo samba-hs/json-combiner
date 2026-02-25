@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/samanthabalagot/Desktop/HS/json-combiner status)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
