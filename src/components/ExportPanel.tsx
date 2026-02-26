@@ -1,6 +1,6 @@
-import { useState } from 'react'
-
-type ExportFormat = 'csv' | 'tsv' | 'json' | 'xlsx'
+import React, { useState } from 'react'
+import { useApp } from '../stores/AppContext'
+import type { ExportFormat } from '../lib/types'
 
 interface Props {
   totalRows: number
@@ -13,10 +13,18 @@ const FORMATS: { value: ExportFormat; label: string; desc: string }[] = [
   { value: 'xlsx', label: 'Excel', desc: 'Excel workbook (.xlsx)' }
 ]
 
-export default function ExportPanel({ totalRows }: Props): JSX.Element {
+const EXT_MAP: Record<ExportFormat, string> = {
+  csv: 'csv',
+  tsv: 'tsv',
+  json: 'json',
+  xlsx: 'xlsx'
+}
+
+export default function ExportPanel({ totalRows }: Props): React.JSX.Element {
+  const app = useApp()
   const [format, setFormat] = useState<ExportFormat>('csv')
   const [exporting, setExporting] = useState(false)
-  const [result, setResult] = useState<{ path: string } | null>(null)
+  const [result, setResult] = useState<{ filename: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleExport = async (): Promise<void> => {
@@ -24,10 +32,9 @@ export default function ExportPanel({ totalRows }: Props): JSX.Element {
     setError(null)
     setResult(null)
     try {
-      const filePath = await window.api.exportData(format)
-      if (filePath) {
-        setResult({ path: filePath })
-      }
+      const filename = `combined_data_${Date.now()}.${EXT_MAP[format]}`
+      await app.exportData(format, filename)
+      setResult({ filename })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed')
     } finally {
@@ -76,14 +83,14 @@ export default function ExportPanel({ totalRows }: Props): JSX.Element {
             Exporting...
           </>
         ) : (
-          <>Save as {FORMATS.find((f) => f.value === format)?.label}</>
+          <>Download as {FORMATS.find((f) => f.value === format)?.label}</>
         )}
       </button>
 
       {result && (
         <div className="bg-green-900/40 border border-green-700 text-green-300 px-4 py-3 rounded-lg w-full">
           <div className="font-medium mb-1">Export successful!</div>
-          <div className="font-mono text-xs text-green-400 break-all">{result.path}</div>
+          <div className="font-mono text-xs text-green-400 break-all">{result.filename}</div>
         </div>
       )}
 

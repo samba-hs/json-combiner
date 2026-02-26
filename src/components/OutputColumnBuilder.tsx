@@ -1,10 +1,13 @@
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { useApp } from '../stores/AppContext'
+import type { RawColumnInfo, OutputColumn } from '../lib/types'
 
 interface Props {
   onExecute: (result: { totalRows: number; columns: string[] }) => void
 }
 
-export default function OutputColumnBuilder({ onExecute }: Props): JSX.Element {
+export default function OutputColumnBuilder({ onExecute }: Props): React.JSX.Element {
+  const app = useApp()
   const [rawColumns, setRawColumns] = useState<RawColumnInfo[]>([])
   const [outputColumns, setOutputColumns] = useState<OutputColumn[]>([])
   const [loading, setLoading] = useState(true)
@@ -15,12 +18,15 @@ export default function OutputColumnBuilder({ onExecute }: Props): JSX.Element {
   const [newName, setNewName] = useState('')
 
   useEffect(() => {
-    window.api
-      .getAllRawColumns()
-      .then(setRawColumns)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [])
+    try {
+      const cols = app.getAllRawColumns()
+      setRawColumns(cols)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load columns')
+    } finally {
+      setLoading(false)
+    }
+  }, [app])
 
   // Raw columns not yet assigned to any output column
   const unassignedRawColumns = useMemo(() => {
@@ -80,7 +86,7 @@ export default function OutputColumnBuilder({ onExecute }: Props): JSX.Element {
     setExecuting(true)
     setError(null)
     try {
-      const result = await window.api.executePipeline(outputColumns)
+      const result = app.executePipeline(outputColumns)
       onExecute(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Pipeline failed')
@@ -107,8 +113,8 @@ export default function OutputColumnBuilder({ onExecute }: Props): JSX.Element {
       <div>
         <h2 className="text-2xl font-bold text-gray-100">Define Output Columns</h2>
         <p className="text-gray-400 text-sm mt-1">
-          Create your final columns and pick which raw columns to coalesce into each.
-          First non-null value wins (priority = top to bottom).
+          Create your final columns and pick which raw columns to coalesce into each. First non-null
+          value wins (priority = top to bottom).
         </p>
       </div>
 
@@ -249,9 +255,7 @@ export default function OutputColumnBuilder({ onExecute }: Props): JSX.Element {
             <div className="max-h-[500px] overflow-y-auto">
               {rawColumns.map((rc) => {
                 // Find which output column (if any) this raw column is assigned to
-                const assignedTo = outputColumns.find((oc) =>
-                  oc.sourceColumns.includes(rc.name)
-                )
+                const assignedTo = outputColumns.find((oc) => oc.sourceColumns.includes(rc.name))
                 const isAssigned = !!assignedTo
 
                 return (

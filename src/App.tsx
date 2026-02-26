@@ -1,21 +1,23 @@
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
+import { useApp } from './stores/AppContext'
 import FolderPicker from './components/FolderPicker'
 import OutputColumnBuilder from './components/OutputColumnBuilder'
 import DataPreview from './components/DataPreview'
 import ExportPanel from './components/ExportPanel'
+import type { FileInfo } from './lib/types'
 
 const STEPS = ['Load Folders', 'Define Columns & Join', 'Preview & Classify', 'Export']
 
 interface LoadedFolder {
   id: string
   label: string
-  folderPath: string
   files: FileInfo[]
   totalRows: number
   allColumns: string[]
 }
 
-function App(): JSX.Element {
+function App(): React.JSX.Element {
+  const app = useApp()
   const [step, setStep] = useState(0)
   const [folders, setFolders] = useState<LoadedFolder[]>([])
 
@@ -31,11 +33,11 @@ function App(): JSX.Element {
   }, [])
 
   const handlePipelineExecuted = useCallback(
-    async (_result: { totalRows: number; columns: string[] }) => {
+    (_result: { totalRows: number; columns: string[] }) => {
       setClassifying(true)
       setStep(2)
       try {
-        const classified = await window.api.classifyRows()
+        const classified = app.classifyRows()
         setClassifyResult(classified)
       } catch (err) {
         console.error('Classification failed:', err)
@@ -43,11 +45,11 @@ function App(): JSX.Element {
         setClassifying(false)
       }
     },
-    []
+    [app]
   )
 
-  const handleReset = async (): Promise<void> => {
-    await window.api.resetAll()
+  const handleReset = (): void => {
+    app.resetAll()
     setStep(0)
     setFolders([])
     setClassifyResult(null)

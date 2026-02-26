@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { useApp } from '../stores/AppContext'
 
 interface Props {
   adTypeSummary: Record<string, number>
@@ -8,7 +9,8 @@ interface Props {
 
 const PAGE_SIZE = 50
 
-export default function DataPreview({ adTypeSummary, columns, totalRows }: Props): JSX.Element {
+export default function DataPreview({ adTypeSummary, columns, totalRows }: Props): React.JSX.Element {
+  const app = useApp()
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [page, setPage] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
@@ -16,10 +18,10 @@ export default function DataPreview({ adTypeSummary, columns, totalRows }: Props
   const [showSummary, setShowSummary] = useState(false)
 
   const loadPage = useCallback(
-    async (p: number) => {
+    (p: number) => {
       setLoading(true)
       try {
-        const result = await window.api.getPreviewData(p, PAGE_SIZE)
+        const result = app.getPreviewData(p, PAGE_SIZE)
         setRows(result.rows)
         setTotalPages(result.totalPages)
         setPage(result.page)
@@ -27,7 +29,7 @@ export default function DataPreview({ adTypeSummary, columns, totalRows }: Props
         setLoading(false)
       }
     },
-    []
+    [app]
   )
 
   useEffect(() => {

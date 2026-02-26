@@ -1,6 +1,3 @@
-import { readdir, readFile } from 'fs/promises'
-import { join, basename } from 'path'
-
 export interface LoadedFile {
   filename: string
   rowCount: number
@@ -13,29 +10,27 @@ export interface LoadResult {
   allColumns: string[]
 }
 
-export async function loadJsonFiles(folderPath: string): Promise<LoadResult> {
-  const entries = await readdir(folderPath)
-  const jsonFiles = entries.filter((f) => f.toLowerCase().endsWith('.json'))
+export async function loadJsonFiles(files: File[]): Promise<LoadResult> {
+  const jsonFiles = files.filter((f) => f.name.toLowerCase().endsWith('.json'))
 
   const rows: Record<string, unknown>[] = []
-  const files: LoadedFile[] = []
+  const loadedFiles: LoadedFile[] = []
   const columnSet = new Set<string>()
 
   for (const file of jsonFiles) {
-    const filePath = join(folderPath, file)
-    const sourceName = basename(file, '.json')
+    const sourceName = file.name.replace(/\.json$/i, '')
 
     try {
-      const content = await readFile(filePath, 'utf-8')
+      const content = await file.text()
       const parsed = JSON.parse(content)
 
       if (!Array.isArray(parsed)) {
-        files.push({ filename: file, rowCount: 0, error: 'Not a JSON array' })
+        loadedFiles.push({ filename: file.name, rowCount: 0, error: 'Not a JSON array' })
         continue
       }
 
       if (parsed.length === 0) {
-        files.push({ filename: file, rowCount: 0, error: 'Empty array' })
+        loadedFiles.push({ filename: file.name, rowCount: 0, error: 'Empty array' })
         continue
       }
 
@@ -49,16 +44,16 @@ export async function loadJsonFiles(folderPath: string): Promise<LoadResult> {
         }
       }
 
-      files.push({ filename: file, rowCount: parsed.length })
+      loadedFiles.push({ filename: file.name, rowCount: parsed.length })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
-      files.push({ filename: file, rowCount: 0, error: message })
+      loadedFiles.push({ filename: file.name, rowCount: 0, error: message })
     }
   }
 
   return {
     rows,
-    files,
+    files: loadedFiles,
     allColumns: Array.from(columnSet)
   }
 }

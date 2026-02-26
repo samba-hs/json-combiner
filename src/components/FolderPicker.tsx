@@ -1,13 +1,13 @@
-import { useState, useCallback, DragEvent } from 'react'
+import React, { useState, useCallback, useRef, type DragEvent, type ChangeEvent } from 'react'
+import { useApp } from '../stores/AppContext'
+import type { FileInfo } from '../lib/types'
 
 interface LoadedFolder {
   id: string
   label: string
-  folderPath: string
   files: FileInfo[]
   totalRows: number
   allColumns: string[]
-  columnConfigs: FolderColumnConfig[]
 }
 
 interface Props {
@@ -15,28 +15,30 @@ interface Props {
   onFoldersChanged: (folders: LoadedFolder[]) => void
 }
 
-export default function FolderPicker({ folders, onFoldersChanged }: Props): JSX.Element {
+export default function FolderPicker({ folders, onFoldersChanged }: Props): React.JSX.Element {
+  const app = useApp()
   const [loading, setLoading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const addFolders = useCallback(
-    async (folderPaths: string[]) => {
+  const addFolderFiles = useCallback(
+    async (filesByFolder: Map<string, File[]>) => {
       setLoading(true)
       setError(null)
       const newFolders: LoadedFolder[] = []
       const errors: string[] = []
       try {
-        for (const folderPath of folderPaths) {
+        for (const [label, files] of filesByFolder) {
           try {
-            const result = await window.api.addFolder(folderPath)
+            const result = await app.addFolder(label, files)
             if (result.files.length === 0) {
-              errors.push(`${folderPath}: No JSON files found`)
+              errors.push(`${label}: No JSON files found`)
               continue
             }
             newFolders.push(result)
           } catch (err) {
-            errors.push(`${folderPath}: ${err instanceof Error ? err.message : 'Failed to load'}`)
+            errors.push(`${label}: ${err instanceof Error ? err.message : 'Failed to load'}`)
           }
         }
         if (newFolders.length > 0) {
@@ -49,28 +51,94 @@ export default function FolderPicker({ folders, onFoldersChanged }: Props): JSX.
         setLoading(false)
       }
     },
-    [folders, onFoldersChanged]
+    [folders, onFoldersChanged, app]
   )
 
-  const handleBrowse = async (): Promise<void> => {
-    const paths = await window.api.selectFolders()
-    if (paths.length > 0) addFolders(paths)
+  const groupFilesByFolder = (fileList: FileList): Map<string, File[]> => {
+    const groups = new Map<string, File[]>()
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i]
+      // webkitRelativePath is "folderName/subpath/file.json"
+      const relativePath = file.webkitRelativePath
+      const folderName = relativePath ? relativePath.split('/')[0] : 'Uploaded Files'
+      if (!groups.has(folderName)) {
+        groups.set(folderName, [])
+      }
+      groups.get(folderName)!.push(file)
+    }
+    return groups
   }
 
-  const handleDrop = (e: DragEvent): void => {
+  const handleBrowse = (): void => {
+    inputRef.current?.click()
+  }
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>): void => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    const grouped = groupFilesByFolder(files)
+    addFolderFiles(grouped)
+    // Reset input so the same folder can be selected again
+    e.target.value = ''
+  }
+
+  const handleDrop = async (e: DragEvent): Promise<void> => {
     e.preventDefault()
     setDragOver(false)
-    const files = e.dataTransfer.files
-    const paths: string[] = []
-    for (let i = 0; i < files.length; i++) {
-      const path = window.api.getPathForFile(files[i])
-      if (path) paths.push(path)
+
+    const items = e.dataTransfer.items
+    if (!items) return
+
+    const groups = new Map<string, File[]>()
+
+    // Try to read directory entries
+    const entries: FileSystemEntry[] = []
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry?.()
+      if (entry) entries.push(entry)
     }
-    if (paths.length > 0) addFolders(paths)
+
+    if (entries.length > 0 && entries.some((e) => e.isDirectory)) {
+      // Read files from directories
+      for (const entry of entries) {
+        if (entry.isDirectory) {
+          const dirReader = (entry as FileSystemDirectoryEntry).createReader()
+          const files = await new Promise<File[]>((resolve) => {
+            dirReader.readEntries(async (dirEntries) => {
+              const filePromises = dirEntries
+                .filter((e) => e.isFile && e.name.toLowerCase().endsWith('.json'))
+                .map(
+                  (e) =>
+                    new Promise<File>((res, rej) => {
+                      ;(e as FileSystemFileEntry).file(res, rej)
+                    })
+                )
+              resolve(await Promise.all(filePromises))
+            })
+          })
+          if (files.length > 0) {
+            groups.set(entry.name, files)
+          }
+        }
+      }
+    } else {
+      // Fallback: treat dropped files as a single group
+      const files: File[] = []
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        files.push(e.dataTransfer.files[i])
+      }
+      if (files.length > 0) {
+        groups.set('Dropped Files', files)
+      }
+    }
+
+    if (groups.size > 0) {
+      addFolderFiles(groups)
+    }
   }
 
-  const removeFolder = async (id: string): Promise<void> => {
-    await window.api.removeFolder(id)
+  const removeFolder = (id: string): void => {
+    app.removeFolder(id)
     onFoldersChanged(folders.filter((f) => f.id !== id))
   }
 
@@ -78,9 +146,20 @@ export default function FolderPicker({ folders, onFoldersChanged }: Props): JSX.
     <div className="flex flex-col items-center gap-6 w-full max-w-2xl">
       <h2 className="text-2xl font-bold text-gray-100">Load Folders</h2>
       <p className="text-gray-400 text-center max-w-md">
-        Add folders containing JSON files. Each folder can have different columns — you'll
-        configure which fields to keep and how to join them next.
+        Add folders containing JSON files. Each folder can have different columns — you'll configure
+        which fields to keep and how to join them next.
       </p>
+
+      {/* Hidden file input for folder selection */}
+      <input
+        ref={inputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory is non-standard but widely supported
+        webkitdirectory=""
+        multiple
+        className="hidden"
+        onChange={handleFileChange}
+      />
 
       {/* Loaded folders list */}
       {folders.length > 0 && (
@@ -89,20 +168,14 @@ export default function FolderPicker({ folders, onFoldersChanged }: Props): JSX.
             const okFiles = f.files.filter((fi) => !fi.error)
             const errFiles = f.files.filter((fi) => fi.error)
             return (
-              <div
-                key={f.id}
-                className="bg-gray-800 rounded-lg px-4 py-3 flex items-center gap-4"
-              >
+              <div key={f.id} className="bg-gray-800 rounded-lg px-4 py-3 flex items-center gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="text-gray-200 font-medium truncate">{f.label}</div>
-                  <div className="text-xs text-gray-500 font-mono truncate">{f.folderPath}</div>
                   <div className="text-xs text-gray-400 mt-1">
                     {okFiles.length} files, {f.totalRows.toLocaleString()} rows,{' '}
                     {f.allColumns.length} columns
                     {errFiles.length > 0 && (
-                      <span className="text-red-400 ml-2">
-                        ({errFiles.length} errors)
-                      </span>
+                      <span className="text-red-400 ml-2">({errFiles.length} errors)</span>
                     )}
                   </div>
                 </div>
